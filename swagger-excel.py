@@ -24,28 +24,68 @@ for path, methods in swagger_data["paths"].items():
                     "-", "-"
                 ])
 
-        # 🔹 OUT (응답 데이터) 추출
-        if "responses" in details and "200" in details["responses"]:
-            response_content = details["responses"]["200"].get("content", {})
-
-            # 🔹 JSON 형식의 응답인지 확인
-            if "application/json" in response_content:
-                schema = response_content["application/json"].get("schema", {})
-
-                # 🔹 schema가 object일 경우만 처리
-                if schema.get("type") == "object" and "properties" in schema:
-                    for key, value in schema["properties"].items():
-                        output_data.append([
+        # 🔹 REQUEST BODY 처리 (PUT, POST 등에서 사용)
+        if "requestBody" in details:
+            request_body = details["requestBody"].get("content", {}).get("application/json", {})
+            schema = request_body.get("schema", {})
+            if schema.get("type") == "object" and "properties" in schema:
+                for key, value in schema["properties"].items():
+                    input_data.append([
+                        api_name, path, method.upper(), key,
+                        "O", value.get("type", "Unknown"), "-", "-"
+                    ])
+            elif schema.get("type") == "array":
+                items = schema.get("items", {})
+                if items.get("type") == "object" and "properties" in items:
+                    for key, value in items["properties"].items():
+                        input_data.append([
                             api_name, path, method.upper(), key,
                             "O", value.get("type", "Unknown"), "-", "-"
+                        ])
+            else:
+                input_data.append([
+                    api_name, path, method.upper(), "Body",
+                    "O", schema.get("type", "Unknown"), "-", "-"
+                ])
+
+        # 🔹 OUT (응답 데이터) 추출
+        if "responses" in details:
+            for status_code, response in details["responses"].items():
+                response_content = response.get("content", {})
+
+                if "application/json" in response_content:
+                    schema = response_content["application/json"].get("schema", {})
+
+                    # 🔹 schema가 object일 경우
+                    if schema.get("type") == "object" and "properties" in schema:
+                        for key, value in schema["properties"].items():
+                            output_data.append([
+                                api_name, path, method.upper(), key,
+                                "O", value.get("type", "Unknown"), "-", "-"
+                            ])
+
+                    # 🔹 schema가 없고 example만 있는 경우
+                    elif "example" in response_content["application/json"]:
+                        example_data = response_content["application/json"]["example"]
+                        for key, value in example_data.items():
+                            output_data.append([
+                                api_name, path, method.upper(), key,
+                                "O", type(value).__name__, "-", "-"
+                            ])
+
+                    # 🔹 아무 데이터도 없을 경우 기본 응답 추가
+                    else:
+                        output_data.append([
+                            api_name, path, method.upper(), "응답 없음",
+                            "-", "-", "-", "-"
                         ])
 
 # 🔹 DataFrame 생성
 df_input = pd.DataFrame(input_data, columns=["API 명", "경로", "HTTP 메서드", "파라미터 코드", "필수여부", "자료형", "데이터 크기", "샘플데이터"])
 df_output = pd.DataFrame(output_data, columns=["API 명", "경로", "HTTP 메서드", "파라미터 코드", "필수여부", "자료형", "데이터 크기", "샘플데이터"])
 
-# 🔹 엑셀 파일 저장
-with pd.ExcelWriter("interface.xlsx") as writer:
+# 🔹 엑셀 파일 저장 (engine="openpyxl" 추가!)
+with pd.ExcelWriter("interface.xlsx", engine="openpyxl") as writer:
     df_input.to_excel(writer, sheet_name="INPUT", index=False)
     df_output.to_excel(writer, sheet_name="OUTPUT", index=False)
 
