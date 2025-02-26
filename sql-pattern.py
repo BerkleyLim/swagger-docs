@@ -44,7 +44,7 @@ CREATE TABLE apps (
 );
 """
 
-# ✅ 테이블명 추출 (대소문자 처리 대응)
+# ✅ 테이블명 추출 (정확한 테이블명만 추출)
 table_name_match = re.search(r"CREATE TABLE\s+(\w+)", sql_ddl, re.IGNORECASE)
 table_name = table_name_match.group(1).lower() if table_name_match else "unknown_table"
 
@@ -73,9 +73,9 @@ xml_output = f"""<?xml version="1.0" encoding="UTF-8"?>
         <createTable tableName="{table_name}">
 """
 
-# ✅ 테이블 컬럼 추가
+# ✅ 컬럼 추가 (대소문자 통일 및 COMMENT 필터링)
 for col_name, col_type, col_comment in columns:
-    col_name = col_name.lower()  # 소문자로 변환하여 일관성 유지
+    col_name = col_name.lower()  # 컬럼명 소문자로 변환
     comment = f' remarks="{col_comment}"' if col_comment else ""
     xml_output += f'            <column name="{col_name}" type="{col_type}"{comment}/>\n'
 
@@ -84,6 +84,7 @@ xml_output += """        </createTable>
 
     <!-- ############## 개별 컬럼 추가 ############### -->"""
 
+
 # ✅ 개별 컬럼 추가 (불필요한 컬럼 제외)
 change_set_id = 2
 excluded_columns = {
@@ -91,7 +92,7 @@ excluded_columns = {
 }
 
 for col_name, col_type, col_comment in columns:
-    col_name = col_name.lower()  # 소문자로 변환
+    col_name = col_name.lower()  # 컬럼명 소문자로 변환
 
     if col_name not in excluded_columns:
         comment = f' remarks="{col_comment}"' if col_comment else ""
