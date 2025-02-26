@@ -44,14 +44,18 @@ CREATE TABLE apps (
 );
 """
 
-# 테이블명 동적으로 추출
-table_name_match = re.search(r"CREATE TABLE (\w+)", sql_ddl, re.IGNORECASE)
-table_name = table_name_match.group(1) if table_name_match else "unknown_table"
+# ✅ 테이블명 추출 (대소문자 처리 대응)
+table_name_match = re.search(r"CREATE TABLE\s+(\w+)", sql_ddl, re.IGNORECASE)
+table_name = table_name_match.group(1).lower() if table_name_match else "unknown_table"
 
-# 컬럼 정보 추출
-columns = re.findall(r"(\w+)\s+([\w\(\)]+)\s+NULL(?: COMMENT '(.*?)')?", sql_ddl, re.IGNORECASE)
+# ✅ 컬럼 정보 추출 (줄바꿈 포함 처리)
+columns = re.findall(
+    r"(\w+)[\s\n]+([\w\(\)\s]+(?:\s+UNSIGNED)?(?:\s+AUTO_INCREMENT)?(?:\s+PRIMARY KEY)?)"
+    r"(?:[\s\n]+NULL)?(?:[\s\n]+COMMENT\s+'(.*?)')?",
+    sql_ddl, re.IGNORECASE
+)
 
-# 기본 XML 템플릿
+# ✅ XML 템플릿 생성
 xml_output = f"""<?xml version="1.0" encoding="UTF-8"?>
 <databaseChangeLog
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
@@ -59,7 +63,7 @@ xml_output = f"""<?xml version="1.0" encoding="UTF-8"?>
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
     http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
 
-    <!-- 1. 테이블 생성 (공통 값만 추가) -->
+    <!-- 1. 테이블 생성 -->
     <changeSet id="1" author="baseon">
         <preConditions onFail="MARK_RAN">
             <not>
@@ -69,21 +73,26 @@ xml_output = f"""<?xml version="1.0" encoding="UTF-8"?>
         <createTable tableName="{table_name}">
 """
 
-# 테이블 생성 부분 추가
+# ✅ 테이블 컬럼 추가
 for col_name, col_type, col_comment in columns:
+    col_name = col_name.lower()  # 소문자로 변환하여 일관성 유지
     comment = f' remarks="{col_comment}"' if col_comment else ""
     xml_output += f'            <column name="{col_name}" type="{col_type}"{comment}/>\n'
 
 xml_output += """        </createTable>
     </changeSet>\n\n
-    
-    <!-- ############## 아래서 부터 각 열 생성 ############### -->"""
 
-# 컬럼 추가 부분 추가
+    <!-- ############## 개별 컬럼 추가 ############### -->"""
+
+# ✅ 개별 컬럼 추가 (불필요한 컬럼 제외)
 change_set_id = 2
-excluded_columns = {"id", "code", "name", "remark", "creator_id", "updater_id", "deleted_at", "created_at", "updated_at"}
+excluded_columns = {
+    "id", "code", "name", "remark", "creator_id", "updater_id", "deleted_at", "created_at", "updated_at"
+}
 
 for col_name, col_type, col_comment in columns:
+    col_name = col_name.lower()  # 소문자로 변환
+
     if col_name not in excluded_columns:
         comment = f' remarks="{col_comment}"' if col_comment else ""
         xml_output += f"""
