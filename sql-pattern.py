@@ -1,4 +1,8 @@
 import re
+import os
+from flask import Flask, send_file
+
+app = Flask(__name__)
 
 sql_ddl = """
 CREATE TABLE apps (
@@ -40,24 +44,29 @@ CREATE TABLE apps (
 );
 """
 
-# 정규식을 이용해 컬럼 정보 추출
+# 테이블명 동적으로 추출
+table_name_match = re.search(r"CREATE TABLE (\w+)", sql_ddl, re.IGNORECASE)
+table_name = table_name_match.group(1) if table_name_match else "unknown_table"
+
+# 컬럼 정보 추출
 columns = re.findall(r"(\w+)\s+([\w\(\)]+)\s+NULL(?: COMMENT '(.*?)')?", sql_ddl, re.IGNORECASE)
 
 # 기본 XML 템플릿
-xml_output = """<?xml version="1.0" encoding="UTF-8"?>
+xml_output = f"""<?xml version="1.0" encoding="UTF-8"?>
 <databaseChangeLog
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
     http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
 
+    <!-- 1. 테이블 생성 (공통 값만 추가) -->
     <changeSet id="1" author="baseon">
         <preConditions onFail="MARK_RAN">
             <not>
-                <tableExists tableName="apps"/>
+                <tableExists tableName="{table_name}"/>
             </not>
         </preConditions>
-        <createTable tableName="apps">
+        <createTable tableName="{table_name}">
 """
 
 # 테이블 생성 부분 추가
@@ -66,21 +75,26 @@ for col_name, col_type, col_comment in columns:
     xml_output += f'            <column name="{col_name}" type="{col_type}"{comment}/>\n'
 
 xml_output += """        </createTable>
-    </changeSet>\n"""
+    </changeSet>\n\n
+    
+    <!-- ############## 아래서 부터 각 열 생성 ############### -->"""
 
 # 컬럼 추가 부분 추가
 change_set_id = 2
+excluded_columns = {"id", "code", "name", "remark", "creator_id", "updater_id", "deleted_at", "created_at", "updated_at"}
+
 for col_name, col_type, col_comment in columns:
-    if col_name not in ["id", "code", "name", "remark", "creator_id", "updater_id", "deleted_at", "created_at", "updated_at"]:
+    if col_name not in excluded_columns:
         comment = f' remarks="{col_comment}"' if col_comment else ""
         xml_output += f"""
+    <!-- {change_set_id}. {col_comment if col_comment else col_name} 컬럼 추가 -->
     <changeSet id="{change_set_id}" author="baseon">
         <preConditions onFail="MARK_RAN">
             <not>
-                <columnExists tableName="apps" columnName="{col_name}"/>
+                <columnExists tableName="{table_name}" columnName="{col_name}"/>
             </not>
         </preConditions>
-        <addColumn tableName="apps">
+        <addColumn tableName="{table_name}">
             <column name="{col_name}" type="{col_type}"{comment}/>
         </addColumn>
     </changeSet>
@@ -89,5 +103,26 @@ for col_name, col_type, col_comment in columns:
 
 xml_output += "</databaseChangeLog>"
 
-# 결과 출력
+# 콘솔 출력
 print(xml_output)
+
+
+####### 아래는 웹을 통한 다운로드 #########
+# XML 파일 저장 경로
+file_path = f"{table_name}_changelog.xml"
+with open(file_path, "w", encoding="utf-8") as f:
+    f.write(xml_output)
+
+# 파일 다운로드 경로 출력
+print(f"파일 다운로드: sandbox:{file_path}")
+
+# @app.route("/download")
+# def download_file():
+#     """ 파일 다운로드를 위한 API """
+#     return send_file(file_path, as_attachment=True)
+#
+#
+# if __name__ == "__main__":
+#     # Flask 서버 실행
+#     print(f"Download XML at: http://127.0.0.1:5000/download")
+#     app.run(debug=True, port=5000)
